@@ -1,0 +1,117 @@
+---
+title: "Most One Sided EPL Matches"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r libraries, include=FALSE, warning=FALSE}
+
+library(dplyr)
+library(ggplot2)
+library(engsoccerdata)
+library(ggiraph)
+```
+
+
+```{r pre-processing, include=FALSE}
+  
+df <- engsoccerdata::england
+
+#only matches in tier 1 (English First Division and subsequently EPL)
+df <- df %>% filter(tier == 1)
+
+
+#winner of game
+df <- df %>% mutate(winner = case_when(
+  hgoal > vgoal ~ home,
+  hgoal < vgoal ~ visitor,
+  TRUE ~ "Draw"
+),
+loser = case_when(
+   hgoal < vgoal ~ home,
+  hgoal > vgoal ~ visitor,
+  TRUE ~ "Draw"
+))
+                  
+#teams involved
+df <- df %>% 
+  rowwise %>% 
+  mutate(teams_involved = paste(sort(c(home,visitor)),collapse=" - ")) %>% 
+  ungroup()
+
+
+df <- df %>% 
+  group_by(teams_involved) %>% 
+  mutate(total_games_played = n())
+
+```
+
+```{r win_count, include=FALSE}
+
+
+win_count <- df %>% 
+  count(winner,
+        teams_involved,
+        total_games_played) %>% 
+  mutate(win_perc = n/total_games_played) %>% 
+  ungroup()
+
+more_common_fixtures <- win_count %>% 
+  filter(total_games_played>=30)
+
+one_sided_fixtures <- more_common_fixtures %>% 
+  ungroup() %>%
+  top_n(20,
+        wt = win_perc)
+
+
+```
+
+
+```{r static graph, eval=FALSE, warning=FALSE, include=FALSE}
+
+one_sided_fixtures %>% 
+  ggplot(aes(x = reorder(teams_involved,win_perc),
+             y = win_perc
+             ))+
+  geom_bar(stat="identity", fill = "darkblue")+
+  labs(title = "The Top 20 Most One-Sided Matches in English Premier League History",
+       y = "Win Percentage",
+       x = NULL,
+       caption = "Data Source: engsoccerdata R package") + 
+  theme(plot.title = element_text(size=14,hjust = 0.5),
+        axis.text.y = element_text(size = 12,face="bold"))+
+geom_text(aes(label = paste0(winner," (",n," of ",total_games_played,")")),
+    vjust = .5,
+    hjust= -.02,
+    fontface =3,
+    size=3.5) +
+coord_flip()+
+  ylim(0.0,1.0)
+
+ggsave(filename = "static_plot_one_sided_fixtures.png",width = 30, height = 15, units = "cm")
+
+
+```
+
+```{r graph, echo=FALSE, warning=FALSE}
+
+top_graph <- one_sided_fixtures %>% 
+  ggplot(aes(x = reorder(teams_involved,win_perc),
+             y = win_perc,
+             tooltip = paste0(winner," (",n," of ",total_games_played,")")))+
+  geom_bar_interactive(stat="identity", fill = "darkblue")+
+  coord_flip()+
+  ylim(0,1)+
+  labs(title = "The Top 20 Most One-Sided Matches in English Premier League History",
+       y = "Win Percentage",
+       x = NULL,
+       caption = "Data from engsoccerdata R package") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+ ggiraph(code = print(top_graph),width = 0.8)
+
+```
+
+
